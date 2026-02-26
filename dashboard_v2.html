@@ -239,10 +239,14 @@
     .card-header h3 { font-size: 14px; font-weight: 700; color: #1a1a2e; }
     .card-header p  { font-size: 12px; color: #888; }
     .map-body {
-      min-height: 280px; display: flex; align-items: center;
+      min-height: 500px; display: flex; align-items: flex-start;
       justify-content: center; background: #0d1117; overflow: hidden;
+      padding: 0;
     }
-    .map-body canvas, .map-body img { max-width: 100%; display: block; }
+    .map-body canvas, .map-body img {
+      width: 100%; height: auto; display: block;
+      image-rendering: crisp-edges;
+    }
     .map-empty { text-align: center; color: #555; padding: 40px; }
     .map-empty .emoji { font-size: 44px; margin-bottom: 8px; }
     .map-empty p { font-size: 13px; color: #888; }
@@ -548,7 +552,15 @@
     <div class="map-card">
       <div class="card-header">
         <h3>🗺️ Annotated Detection Map</h3>
-        <p id="mapStatus">Waiting for pipeline run...</p>
+        <div style="display:flex;align-items:center;gap:10px">
+          <p id="mapStatus">Waiting for pipeline run...</p>
+          <button id="toggleCropBtn" onclick="toggleFullMap()"
+            style="display:none;padding:4px 10px;font-size:11px;font-weight:700;
+            background:#1a1a2e;color:white;border:1px solid #444;border-radius:5px;
+            cursor:pointer;white-space:nowrap">
+            🔍 View Full Image
+          </button>
+        </div>
       </div>
       <div class="map-body" id="mapBody">
         <div class="map-empty">
@@ -610,7 +622,7 @@ let mode = 'demo';
 let running = false;
 let t0 = null;
 let loadedFiles = { ohrc: null, dtm: null };  // File objects
-let loadedImgData = { ohrc: null, dtm: null }; // ImageData arrays for preview
+let loadedImgData = { ohrc: null, dtm: null }; // Image objects for drawMap overlay
 
 // ── Mode ───────────────────────────────────────────────────────────────────
 function setMode(m) {
@@ -669,6 +681,8 @@ function processFileForZone(type, file) {
     reader.onload = ev => {
       const img = new Image();
       img.onload = () => {
+        // Store Image object for drawMap overlay
+        if (type === 'ohrc') loadedImgData.ohrc = img;
         drawPreviewCanvas(type, img);
         document.getElementById(type + 'Thumb').classList.add('show');
         document.getElementById(type + 'ThumbImg') && (document.getElementById(type + 'ThumbImg').src = ev.target.result);
@@ -729,6 +743,8 @@ function drawPlaceholderCanvas(type, fname, label) {
 function clearFile(event, type) {
   event.stopPropagation();
   loadedFiles[type] = null;
+  if (type === 'ohrc') loadedImgData.ohrc = null;
+  if (type === 'dtm')  loadedImgData.dtm  = null;
   const zone = document.getElementById(type + 'Zone');
   zone.classList.remove('loaded');
   document.getElementById(type + 'FileName').textContent = '';
@@ -870,84 +886,230 @@ function showLandslides(data) {
       }).join('');
 }
 
-// ── Draw output map ────────────────────────────────────────────────────────
-function drawMap(boulders, landslides, baseImage) {
-  const canvas = document.createElement('canvas');
-  const S = 560; canvas.width = S; canvas.height = S;
-  canvas.style.maxWidth = '100%';
-  const ctx = canvas.getContext('2d');
+let _fullCanvas = null;   // full annotated offscreen canvas
+let _cropCanvas = null;   // cropped canvas shown by default
+let _showingFull = false;
 
-  const finish = () => {
-    // Landslides
-    landslides.forEach(l => {
-      const x = ((l.source_col_global??Math.random()*1500)/1500)*S;
-      const y = ((l.source_row_global??Math.random()*1500)/1500)*S;
-      const w = Math.max(6,((l.major_axis_m??100)/300)*S*0.35);
-      const h = Math.max(3,((l.minor_axis_m??30)/100)*S*0.12);
-      const recent = l.age_class==='recent';
-      ctx.save(); ctx.translate(x,y); ctx.rotate(Math.random()*Math.PI);
-      ctx.beginPath(); ctx.ellipse(0,0,w,h,0,0,Math.PI*2);
-      ctx.fillStyle = recent?'rgba(255,193,7,0.18)':'rgba(158,158,158,0.14)'; ctx.fill();
-      ctx.strokeStyle = recent?'rgba(255,193,7,0.7)':'rgba(158,158,158,0.5)';
-      ctx.lineWidth=1.5; ctx.stroke(); ctx.restore();
-      ctx.strokeStyle='#4caf50'; ctx.lineWidth=1.5;
-      ctx.beginPath(); ctx.moveTo(x-5,y); ctx.lineTo(x+5,y); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(x,y-5); ctx.lineTo(x,y+5); ctx.stroke();
-    });
-
-    // Boulders
-    boulders.slice(0,120).forEach(b => {
-      const x = ((b.x_pixel_global??b.x_pixel??Math.random()*1500)/1500)*S;
-      const y = ((b.y_pixel_global??b.y_pixel??Math.random()*1500)/1500)*S;
-      const r = Math.max(1.5,((b.radius_px??5)/1500)*S*3);
-      ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2);
-      ctx.strokeStyle='rgba(33,150,243,0.85)'; ctx.lineWidth=1; ctx.stroke();
-    });
-
-    // Legend
-    ctx.fillStyle='rgba(0,0,0,0.72)'; ctx.fillRect(8,S-68,185,60);
-    ctx.strokeStyle='rgba(255,255,255,0.15)'; ctx.lineWidth=1; ctx.strokeRect(8,S-68,185,60);
-    ctx.font='11px monospace';
-    ctx.fillStyle='#2196f3'; ctx.fillText('⬤  Boulders', 16, S-50);
-    ctx.fillStyle='#ffc107'; ctx.fillText('—  Recent Landslides', 16, S-35);
-    ctx.fillStyle='#9e9e9e'; ctx.fillText('—  Ancient Landslides', 16, S-20);
-
-    const mb = document.getElementById('mapBody');
-    mb.innerHTML=''; mb.appendChild(canvas);
-    document.getElementById('mapStatus').textContent =
-      `${boulders.length} boulders, ${landslides.length} landslides mapped`;
-
-    canvas.toBlob(blob => {
-      if(!blob) return;
-      const el = document.getElementById('dlM');
-      el.href = URL.createObjectURL(blob);
-      el.download = 'annotated_map.png';
-      el.classList.remove('disabled');
-    });
-  };
-
-  // If we have a real loaded image, draw it as base
-  if (baseImage) {
-    ctx.drawImage(baseImage, 0, 0, S, S);
-    // Semi-transparent dark overlay so annotations are visible
-    ctx.fillStyle='rgba(0,0,0,0.35)'; ctx.fillRect(0,0,S,S);
-    finish();
+function toggleFullMap() {
+  const mb  = document.getElementById('mapBody');
+  const btn = document.getElementById('toggleCropBtn');
+  if (!_fullCanvas || !_cropCanvas) return;
+  _showingFull = !_showingFull;
+  mb.innerHTML = '';
+  if (_showingFull) {
+    _fullCanvas.style.width  = '100%';
+    _fullCanvas.style.height = 'auto';
+    mb.appendChild(_fullCanvas);
+    btn.textContent = '✂️ Back to Crop';
   } else {
-    // Synthetic background
-    ctx.fillStyle='#0d1117'; ctx.fillRect(0,0,S,S);
-    ctx.strokeStyle='rgba(255,255,255,0.03)'; ctx.lineWidth=1;
-    for(let i=0;i<S;i+=56){
-      ctx.beginPath();ctx.moveTo(i,0);ctx.lineTo(i,S);ctx.stroke();
-      ctx.beginPath();ctx.moveTo(0,i);ctx.lineTo(S,i);ctx.stroke();
-    }
-    for(let i=0;i<5;i++){
-      const gx=Math.random()*S, gy=Math.random()*S;
-      const g=ctx.createRadialGradient(gx,gy,10,gx,gy,80+Math.random()*80);
-      g.addColorStop(0,'rgba(40,60,80,0.5)'); g.addColorStop(1,'transparent');
-      ctx.fillStyle=g; ctx.fillRect(0,0,S,S);
-    }
-    finish();
+    _cropCanvas.style.width  = '100%';
+    _cropCanvas.style.height = 'auto';
+    mb.appendChild(_cropCanvas);
+    btn.textContent = '🔍 View Full Image';
   }
+}
+
+
+// - Canvas matches real image resolution exactly (no squishing/cropping)
+// - Coordinates are mapped 1:1 from pipeline pixel space to canvas space
+// - Image drawn at full quality, NO dark overlay on top
+// - Detections drawn with semi-transparent fills matching visualizer.py exactly
+
+function drawMap(boulders, landslides, baseImage) {
+  const mb = document.getElementById('mapBody');
+
+  const imgW = baseImage ? baseImage.naturalWidth  : 1500;
+  const imgH = baseImage ? baseImage.naturalHeight : 1500;
+
+  // ── Step 1: Compute tight bounding box of ALL detections ───────────────
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+
+  boulders.forEach(b => {
+    const cx = b.x_pixel_global ?? b.x_pixel ?? 0;
+    const cy = b.y_pixel_global ?? b.y_pixel ?? 0;
+    const r  = b.radius_px ?? 5;
+    minX = Math.min(minX, cx - r);
+    minY = Math.min(minY, cy - r);
+    maxX = Math.max(maxX, cx + r);
+    maxY = Math.max(maxY, cy + r);
+  });
+
+  landslides.forEach(l => {
+    const cx = l.source_col_global ?? 0;
+    const cy = l.source_row_global ?? 0;
+    const rw = Math.max(12, (l.major_axis_m ?? 80) / 0.3 * 0.5);
+    const rh = Math.max(6,  (l.minor_axis_m ?? 25) / 0.3 * 0.5);
+    const ext = Math.max(rw, rh); // conservative bounding extent
+    minX = Math.min(minX, cx - ext);
+    minY = Math.min(minY, cy - ext);
+    maxX = Math.max(maxX, cx + ext);
+    maxY = Math.max(maxY, cy + ext);
+  });
+
+  // Fallback if no detections
+  if (!isFinite(minX)) { minX = 0; minY = 0; maxX = imgW; maxY = imgH; }
+
+  // Add padding (5% of detection area on each side, min 60px)
+  const detW   = maxX - minX;
+  const detH   = maxY - minY;
+  const padPx  = Math.max(60, Math.max(detW, detH) * 0.06);
+
+  // Clamp crop to image bounds
+  const cropX  = Math.max(0,    Math.floor(minX - padPx));
+  const cropY  = Math.max(0,    Math.floor(minY - padPx));
+  const cropX2 = Math.min(imgW, Math.ceil(maxX  + padPx));
+  const cropY2 = Math.min(imgH, Math.ceil(maxY  + padPx));
+  const cropW  = cropX2 - cropX;
+  const cropH  = cropY2 - cropY;
+
+  // ── Step 2: Draw full annotated image on offscreen canvas ──────────────
+  const offscreen = document.createElement('canvas');
+  offscreen.width  = imgW;
+  offscreen.height = imgH;
+  const ctx = offscreen.getContext('2d');
+
+  // Draw base image
+  if (baseImage) {
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(baseImage, 0, 0, imgW, imgH);
+  } else {
+    ctx.fillStyle = '#0d1117';
+    ctx.fillRect(0, 0, imgW, imgH);
+    for (let i = 0; i < 8; i++) {
+      const gx = Math.random() * imgW, gy = Math.random() * imgH;
+      const g  = ctx.createRadialGradient(gx, gy, 10, gx, gy, 150 + Math.random()*150);
+      g.addColorStop(0, 'rgba(55,75,95,0.6)'); g.addColorStop(1, 'transparent');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, imgW, imgH);
+    }
+    for (let i = 0; i < 12; i++) {
+      const cx = Math.random()*imgW, cy = Math.random()*imgH, cr = 20+Math.random()*120;
+      ctx.beginPath(); ctx.arc(cx, cy, cr, 0, Math.PI*2);
+      ctx.strokeStyle = 'rgba(100,120,140,0.25)'; ctx.lineWidth = 2; ctx.stroke();
+    }
+  }
+
+  // Draw landslides
+  landslides.forEach(l => {
+    const cx = l.source_col_global ?? (Math.random() * imgW);
+    const cy = l.source_row_global ?? (Math.random() * imgH);
+    const rw = Math.max(12, (l.major_axis_m ?? 80) / 0.3 * 0.5);
+    const rh = Math.max(6,  (l.minor_axis_m ?? 25) / 0.3 * 0.5);
+    const recent = l.age_class === 'recent';
+    const fill   = recent ? 'rgba(255,200,0,' : 'rgba(180,180,180,';
+    const angle  = l.orientation_deg
+      ? l.orientation_deg * Math.PI / 180
+      : ((Math.floor(cx) * 137 + Math.floor(cy) * 97) % 314) / 100;
+
+    ctx.save(); ctx.translate(cx, cy); ctx.rotate(angle);
+    ctx.beginPath(); ctx.ellipse(0, 0, rw, rh, 0, 0, Math.PI*2);
+    ctx.fillStyle = fill + '0.45)'; ctx.fill();
+    ctx.beginPath(); ctx.ellipse(0, 0, rw, rh, 0, 0, Math.PI*2);
+    ctx.strokeStyle = fill + '0.90)';
+    ctx.lineWidth = Math.max(2, imgW/500); ctx.stroke();
+    ctx.restore();
+
+    const ch = Math.max(10, imgW/100);
+    ctx.strokeStyle = 'rgba(0,255,100,0.95)';
+    ctx.lineWidth = Math.max(2, imgW/500);
+    ctx.beginPath(); ctx.moveTo(cx-ch, cy); ctx.lineTo(cx+ch, cy); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx, cy-ch); ctx.lineTo(cx, cy+ch); ctx.stroke();
+    ctx.beginPath(); ctx.arc(cx, cy, Math.max(3, imgW/300), 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(0,255,100,1)'; ctx.fill();
+  });
+
+  // Draw boulders
+  boulders.forEach(b => {
+    const cx = b.x_pixel_global ?? b.x_pixel ?? (Math.random()*imgW);
+    const cy = b.y_pixel_global ?? b.y_pixel ?? (Math.random()*imgH);
+    const r  = Math.max(2, b.radius_px ?? 5);
+
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(255,50,50,0.25)'; ctx.fill();
+
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2);
+    ctx.strokeStyle = 'rgba(255,50,50,0.85)';
+    ctx.lineWidth = Math.max(1, imgW/800); ctx.stroke();
+
+    ctx.beginPath(); ctx.arc(cx, cy, Math.max(1.5, r*0.15), 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(255,255,100,1)'; ctx.fill();
+  });
+
+  // ── Step 3: Crop to detection area at full pixel quality ───────────────
+  const cropCanvas = document.createElement('canvas');
+  cropCanvas.width  = cropW;
+  cropCanvas.height = cropH;
+  cropCanvas.style.width   = '100%';
+  cropCanvas.style.height  = 'auto';
+  cropCanvas.style.display = 'block';
+
+  const cropCtx = cropCanvas.getContext('2d');
+  cropCtx.imageSmoothingEnabled = true;
+  cropCtx.imageSmoothingQuality = 'high';
+
+  // Pull exactly the cropped region from the offscreen canvas — no scaling
+  cropCtx.drawImage(offscreen,
+    cropX, cropY, cropW, cropH,   // source region
+    0,     0,     cropW, cropH    // destination (same size = no quality loss)
+  );
+
+  // ── Step 4: Legend (scaled to crop canvas size) ─────────────────────────
+  const fs  = Math.max(14, cropW / 55);
+  const lx  = cropW * 0.01;
+  const ly  = cropH - fs * 5.5;
+  const lw  = fs * 15;
+  const lh  = fs * 4.6;
+  const lp  = fs * 0.6;
+
+  cropCtx.fillStyle = 'rgba(0,0,0,0.78)';
+  cropCtx.beginPath();
+  cropCtx.roundRect(lx, ly, lw, lh, fs * 0.4);
+  cropCtx.fill();
+  cropCtx.strokeStyle = 'rgba(255,255,255,0.2)';
+  cropCtx.lineWidth = 1; cropCtx.stroke();
+
+  cropCtx.font = `bold ${fs}px monospace`;
+  cropCtx.fillStyle = 'rgba(255,80,80,1)';
+  cropCtx.fillText('⬤  Boulders',           lx+lp, ly+fs*1.4);
+  cropCtx.fillStyle = 'rgba(255,200,0,1)';
+  cropCtx.fillText('⬤  Recent Landslides',  lx+lp, ly+fs*2.6);
+  cropCtx.fillStyle = 'rgba(200,200,200,1)';
+  cropCtx.fillText('⬤  Ancient Landslides', lx+lp, ly+fs*3.8);
+
+  // Crop info badge (top-right)
+  const badge = `Crop: ${cropW}×${cropH}px of ${imgW}×${imgH}`;
+  const bfs   = Math.max(11, cropW / 80);
+  cropCtx.font = `${bfs}px monospace`;
+  const bw = cropCtx.measureText(badge).width + bfs * 1.2;
+  cropCtx.fillStyle = 'rgba(0,0,0,0.65)';
+  cropCtx.beginPath();
+  cropCtx.roundRect(cropW - bw - 6, 6, bw, bfs * 2, 4);
+  cropCtx.fill();
+  cropCtx.fillStyle = 'rgba(180,220,255,0.9)';
+  cropCtx.fillText(badge, cropW - bw - 6 + bfs * 0.6, 6 + bfs * 1.4);
+
+  // ── Step 5: Mount & enable download ────────────────────────────────────
+  _fullCanvas   = offscreen;
+  _cropCanvas   = cropCanvas;
+  _showingFull  = false;
+
+  mb.innerHTML = '';
+  mb.appendChild(cropCanvas);
+
+  document.getElementById('toggleCropBtn').style.display = 'inline-block';
+  document.getElementById('toggleCropBtn').textContent   = '🔍 View Full Image';
+
+  document.getElementById('mapStatus').textContent =
+    `Cropped to detection zone: ${cropW}×${cropH}px  |  ` +
+    `${boulders.length} boulders · ${landslides.length} landslides`;
+
+  cropCanvas.toBlob(blob => {
+    if (!blob) return;
+    const el = document.getElementById('dlM');
+    el.href     = URL.createObjectURL(blob);
+    el.download = 'annotated_map_cropped.png';
+    el.classList.remove('disabled');
+  }, 'image/png');
 }
 
 // ── Main pipeline run ──────────────────────────────────────────────────────
@@ -972,25 +1134,31 @@ async function runPipeline() {
   const nL = 8  + Math.floor(Math.random()*10);
   const nR = Math.floor(nL*0.3); const nA = nL - nR;
 
-  const boulders = Array.from({length:nB},()=>({
-    x_pixel_global: Math.floor(Math.random()*1500),
-    y_pixel_global: Math.floor(Math.random()*1500),
-    radius_px: 3+Math.floor(Math.random()*22),
-    diameter_m: +(1.8+Math.random()*44).toFixed(1),
-    contrast: +(15+Math.random()*55).toFixed(1),
-    near_landslide: Math.random()>0.75
-  })).sort((a,b)=>b.diameter_m-a.diameter_m);
+  const boulders = Array.from({length:nB},()=>{
+    const r = 3 + Math.floor(Math.random()*22);
+    return {
+      x_pixel_global: Math.floor(r + Math.random()*(1500-r*2)),
+      y_pixel_global: Math.floor(r + Math.random()*(1500-r*2)),
+      radius_px: r,
+      diameter_m: +(r*2*0.3).toFixed(1),
+      contrast: +(15+Math.random()*55).toFixed(1),
+      near_landslide: Math.random()>0.75
+    };
+  }).sort((a,b)=>b.diameter_m-a.diameter_m);
 
   const landslides = Array.from({length:nL},(_, i)=>{
-    const r = i<nR;
+    const isRecent = i<nR;
+    const major = 40+Math.random()*200;
+    const minor = 10+Math.random()*50;
     return {
-      source_col_global: Math.floor(Math.random()*1500),
-      source_row_global: Math.floor(Math.random()*1500),
-      area_m2: +(80+Math.random()*1200).toFixed(0),
-      major_axis_m: +(40+Math.random()*200).toFixed(1),
-      minor_axis_m: +(10+Math.random()*50).toFixed(1),
-      freshness_score: +(r?0.55+Math.random()*0.4:0.1+Math.random()*0.4).toFixed(3),
-      age_class: r?'recent':'ancient'
+      source_col_global: Math.floor(major + Math.random()*(1500-major*2)),
+      source_row_global: Math.floor(minor + Math.random()*(1500-minor*2)),
+      area_m2: +(major*minor*0.3).toFixed(0),
+      major_axis_m: +major.toFixed(1),
+      minor_axis_m: +minor.toFixed(1),
+      orientation_deg: Math.random()*180,
+      freshness_score: +(isRecent?0.55+Math.random()*0.4:0.1+Math.random()*0.4).toFixed(3),
+      age_class: isRecent?'recent':'ancient'
     };
   }).sort((a,b)=>b.area_m2-a.area_m2);
 
