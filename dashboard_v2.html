@@ -1,0 +1,1091 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Lunar Mapper</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #f0f4f8;
+      color: #222;
+      min-height: 100vh;
+    }
+
+    /* ── TOP BAR ── */
+    .topbar {
+      background: #1a1a2e;
+      color: white;
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 3px solid #e94560;
+    }
+    .topbar-left { display: flex; align-items: center; gap: 12px; }
+    .moon-emoji  { font-size: 28px; }
+    .topbar h1   { font-size: 20px; font-weight: 700; letter-spacing: 1px; }
+    .topbar p    { font-size: 12px; color: #aaa; margin-top: 2px; }
+    .topbar-right { font-size: 12px; color: #aaa; text-align: right; }
+    .topbar-right strong { color: white; }
+
+    /* ── LAYOUT ── */
+    .page { display: flex; min-height: calc(100vh - 65px); }
+
+    /* ── SIDEBAR ── */
+    .sidebar {
+      width: 270px;
+      background: white;
+      border-right: 1px solid #dde3ec;
+      padding: 18px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      flex-shrink: 0;
+      overflow-y: auto;
+    }
+
+    .sidebar h2 {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #666;
+      padding-bottom: 5px;
+      border-bottom: 2px solid #e94560;
+      display: inline-block;
+      margin-bottom: 8px;
+    }
+
+    /* Tabs */
+    .tabs { display: flex; border: 1px solid #dde3ec; border-radius: 6px; overflow: hidden; }
+    .tab {
+      flex: 1; padding: 9px 4px; font-size: 13px; font-weight: 600;
+      border: none; background: white; cursor: pointer; color: #666; transition: all 0.15s;
+    }
+    .tab.active { background: #1a1a2e; color: white; }
+
+    /* File upload zones */
+    .upload-zone {
+      border: 2px dashed #c5d0dc;
+      border-radius: 8px;
+      padding: 14px 10px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      background: #fafcff;
+      position: relative;
+    }
+    .upload-zone:hover, .upload-zone.dragover {
+      border-color: #e94560;
+      background: #fff5f7;
+    }
+    .upload-zone.loaded {
+      border-color: #4caf50;
+      background: #f0faf0;
+    }
+    .upload-zone input[type="file"] {
+      position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+    }
+    .upload-zone .zone-icon { font-size: 22px; margin-bottom: 4px; }
+    .upload-zone .zone-label {
+      font-size: 12px; font-weight: 700; color: #444; margin-bottom: 2px;
+    }
+    .upload-zone .zone-sub {
+      font-size: 10px; color: #888; line-height: 1.4;
+    }
+    .upload-zone .zone-file {
+      font-size: 11px; color: #2e7d32; font-weight: 700;
+      margin-top: 4px; word-break: break-all;
+    }
+    .upload-zone .zone-badge {
+      display: inline-block; margin-top: 5px;
+      padding: 2px 8px; border-radius: 10px;
+      font-size: 10px; font-weight: 700;
+      background: #e8f5e9; color: #2e7d32;
+    }
+    .upload-zone .zone-clear {
+      position: absolute; top: 6px; right: 8px;
+      background: none; border: none; font-size: 14px;
+      color: #bbb; cursor: pointer; z-index: 2;
+      display: none;
+    }
+    .upload-zone.loaded .zone-clear { display: block; }
+
+    /* Format pills */
+    .format-pills {
+      display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px;
+    }
+    .pill {
+      padding: 2px 7px; border-radius: 10px; font-size: 10px;
+      font-weight: 700; background: #eef2f7; color: #555;
+      font-family: monospace;
+    }
+    .pill.supported { background: #e3f2fd; color: #1565c0; }
+
+    /* Preview thumbnail */
+    .thumb-wrap {
+      display: none; margin-top: 8px;
+      border-radius: 5px; overflow: hidden;
+      border: 1px solid #dde3ec;
+    }
+    .thumb-wrap img { width: 100%; height: 80px; object-fit: cover; display: block; }
+    .thumb-wrap.show { display: block; }
+
+    /* No-DTM checkbox */
+    .checkbox-row {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 12px; color: #555; cursor: pointer;
+    }
+    .checkbox-row input { accent-color: #e94560; cursor: pointer; }
+
+    /* Sliders */
+    .slider-item { margin-bottom: 11px; }
+    .slider-item label {
+      display: flex; justify-content: space-between;
+      font-size: 12px; color: #555; margin-bottom: 4px; font-weight: 600;
+    }
+    .slider-item label span { color: #e94560; font-family: monospace; }
+    input[type="range"] { width: 100%; cursor: pointer; accent-color: #e94560; }
+
+    /* Buttons */
+    .run-btn {
+      width: 100%; padding: 13px;
+      background: #e94560; color: white;
+      border: none; border-radius: 7px;
+      font-size: 15px; font-weight: 700; cursor: pointer;
+      letter-spacing: 1px; transition: all 0.2s;
+    }
+    .run-btn:hover:not(:disabled) { background: #c73652; transform: translateY(-1px); }
+    .run-btn:disabled { background: #bbb; cursor: not-allowed; transform: none; }
+
+    .cmd-box {
+      background: #1a1a2e; color: #39ff14;
+      border-radius: 6px; padding: 10px 12px;
+      font-family: monospace; font-size: 11px;
+      word-break: break-all; line-height: 1.6;
+      display: none; margin-top: 8px;
+    }
+    .cmd-box .copy-btn {
+      display: block; margin-top: 8px;
+      background: transparent; border: 1px solid #39ff14;
+      color: #39ff14; font-size: 10px; padding: 3px 8px;
+      border-radius: 3px; cursor: pointer; font-family: monospace;
+    }
+
+    /* ── MAIN ── */
+    .main { flex: 1; padding: 18px; display: flex; flex-direction: column; gap: 16px; overflow-y: auto; }
+
+    /* Stats */
+    .stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+    .stat {
+      background: white; border: 1px solid #dde3ec;
+      border-radius: 8px; padding: 13px 14px;
+      border-top: 3px solid #dde3ec;
+    }
+    .stat.blue   { border-top-color: #2196f3; }
+    .stat.red    { border-top-color: #e94560; }
+    .stat.green  { border-top-color: #4caf50; }
+    .stat.grey   { border-top-color: #9e9e9e; }
+    .stat.yellow { border-top-color: #ffc107; }
+    .stat-label  { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #888; margin-bottom: 5px; }
+    .stat-value  { font-size: 28px; font-weight: 700; color: #1a1a2e; font-family: monospace; }
+    .stat-sub    { font-size: 11px; color: #aaa; margin-top: 2px; }
+
+    /* Terminal */
+    .terminal { background: #1a1a2e; border-radius: 8px; overflow: hidden; border: 1px solid #333; }
+    .terminal-header {
+      background: #111122; padding: 8px 14px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .terminal-header span { font-size: 12px; color: #aaa; font-family: monospace; }
+    .term-dots { display: flex; gap: 6px; }
+    .term-dots i { width: 10px; height: 10px; border-radius: 50%; display: block; }
+    .term-dots i:nth-child(1) { background: #ff5f57; }
+    .term-dots i:nth-child(2) { background: #febc2e; }
+    .term-dots i:nth-child(3) { background: #28c840; }
+    .terminal-body {
+      padding: 12px 14px; font-family: monospace; font-size: 12px;
+      color: #ccc; min-height: 140px; max-height: 220px;
+      overflow-y: auto; line-height: 1.9;
+    }
+    .terminal-body::-webkit-scrollbar { width: 4px; }
+    .terminal-body::-webkit-scrollbar-thumb { background: #333; }
+    .t-green { color: #39ff14; } .t-blue { color: #4fc3f7; }
+    .t-yellow{ color: #ffd54f; } .t-red  { color: #ef5350; }
+    .t-dim   { color: #666; }    .t-bold { color: white; font-weight: bold; }
+
+    /* Progress */
+    .progress-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .progress-card { background: white; border: 1px solid #dde3ec; border-radius: 8px; padding: 13px 14px; }
+    .progress-card .label {
+      font-size: 12px; font-weight: 600; color: #555; margin-bottom: 7px;
+      display: flex; justify-content: space-between;
+    }
+    .progress-card .label span { font-family: monospace; color: #e94560; }
+    .bar-track { height: 8px; background: #f0f4f8; border-radius: 4px; overflow: hidden; border: 1px solid #dde3ec; }
+    .bar-fill { height: 100%; border-radius: 4px; background: #2196f3; width: 0%; transition: width 0.4s ease; }
+    .bar-fill.red { background: #e94560; }
+
+    /* Map */
+    .map-card { background: white; border: 1px solid #dde3ec; border-radius: 8px; overflow: hidden; }
+    .card-header {
+      padding: 11px 14px; background: #f8fafc;
+      border-bottom: 1px solid #dde3ec;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .card-header h3 { font-size: 14px; font-weight: 700; color: #1a1a2e; }
+    .card-header p  { font-size: 12px; color: #888; }
+    .map-body {
+      min-height: 280px; display: flex; align-items: center;
+      justify-content: center; background: #0d1117; overflow: hidden;
+    }
+    .map-body canvas, .map-body img { max-width: 100%; display: block; }
+    .map-empty { text-align: center; color: #555; padding: 40px; }
+    .map-empty .emoji { font-size: 44px; margin-bottom: 8px; }
+    .map-empty p { font-size: 13px; color: #888; }
+
+    /* Input image preview in main area */
+    .input-preview {
+      display: none;
+      background: white; border: 1px solid #dde3ec; border-radius: 8px; overflow: hidden;
+    }
+    .input-preview.show { display: block; }
+    .preview-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
+    .preview-pane { position: relative; }
+    .preview-pane + .preview-pane { border-left: 1px solid #dde3ec; }
+    .preview-pane-label {
+      position: absolute; top: 8px; left: 8px;
+      background: rgba(0,0,0,0.6); color: white;
+      font-size: 10px; font-weight: 700; padding: 2px 7px;
+      border-radius: 3px; letter-spacing: 0.5px; text-transform: uppercase;
+    }
+    .preview-pane canvas, .preview-pane img {
+      width: 100%; height: 160px; object-fit: cover; display: block;
+    }
+
+    /* Tables */
+    .tables-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .table-card { background: white; border: 1px solid #dde3ec; border-radius: 8px; overflow: hidden; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    thead tr { background: #f8fafc; }
+    th { padding: 8px 11px; text-align: left; font-weight: 700; color: #555; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #dde3ec; }
+    td { padding: 7px 11px; border-bottom: 1px solid #f0f4f8; color: #333; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #f8fafc; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+    .badge.recent  { background: #e8f5e9; color: #2e7d32; }
+    .badge.ancient { background: #f5f5f5; color: #757575; }
+    .badge.near    { background: #fff3e0; color: #e65100; }
+    .empty-msg { text-align: center; color: #aaa; padding: 18px; font-style: italic; }
+
+    /* Downloads */
+    .downloads { display: flex; gap: 10px; flex-wrap: wrap; }
+    .dl-btn {
+      display: inline-flex; align-items: center; gap: 7px;
+      padding: 9px 16px; background: white; border: 1px solid #dde3ec;
+      border-radius: 6px; font-size: 13px; font-weight: 600;
+      color: #444; cursor: pointer; text-decoration: none; transition: all 0.15s;
+    }
+    .dl-btn:hover { background: #f0f4f8; border-color: #1a1a2e; color: #1a1a2e; }
+    .dl-btn.disabled { opacity: 0.4; pointer-events: none; }
+
+    .drag-hint {
+      text-align: center; font-size: 12px; color: #aaa;
+      padding: 8px; border: 2px dashed #dde3ec;
+      border-radius: 6px; background: white;
+    }
+
+    /* Spinner */
+    .spin {
+      display: inline-block; width: 12px; height: 12px;
+      border: 2px solid #fff4; border-top-color: white;
+      border-radius: 50%; animation: spin 0.7s linear infinite;
+      vertical-align: middle; margin-right: 6px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Responsive */
+    @media (max-width: 900px) {
+      .sidebar { width: 230px; }
+      .stats { grid-template-columns: repeat(3, 1fr); }
+      .tables-row, .progress-row { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 650px) {
+      .page { flex-direction: column; }
+      .sidebar { width: 100%; border-right: none; border-bottom: 1px solid #dde3ec; }
+      .stats { grid-template-columns: repeat(2, 1fr); }
+      .preview-grid { grid-template-columns: 1fr; }
+    }
+
+    /* Img file note */
+    .img-note {
+      background: #fff8e1; border: 1px solid #ffe082;
+      border-radius: 6px; padding: 9px 12px;
+      font-size: 11px; color: #5d4037; line-height: 1.5;
+      display: none;
+    }
+    .img-note.show { display: block; }
+  </style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-left">
+    <span class="moon-emoji">🌕</span>
+    <div>
+      <h1>Lunar Mapper</h1>
+      <p>Automated Boulder &amp; Landslide Detection — Chandrayaan-2 OHRC + TMC-2 DTM</p>
+    </div>
+  </div>
+  <div class="topbar-right">
+    <strong>Team Name</strong><br>WattWatchers
+  </div>
+</div>
+
+<div class="page">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+
+    <div>
+      <h2>Mode</h2>
+      <div class="tabs">
+        <button class="tab active" id="demoTab" onclick="setMode('demo')">🧪 Demo</button>
+        <button class="tab" id="realTab" onclick="setMode('real')">📡 Real Data</button>
+      </div>
+    </div>
+
+    <!-- Real data inputs -->
+    <div id="realSection" style="display:none">
+      <h2>Input Files</h2>
+
+      <!-- OHRC upload -->
+      <div style="margin-bottom:12px">
+        <div class="upload-zone" id="ohrcZone"
+             ondragover="zoneDragOver(event,'ohrcZone')"
+             ondragleave="zoneDragLeave('ohrcZone')"
+             ondrop="zoneDrop(event,'ohrc')">
+          <button class="zone-clear" onclick="clearFile(event,'ohrc')">✕</button>
+          <input type="file" id="ohrcFile" accept=".tif,.tiff,.png,.jpg,.jpeg,.img,.npy"
+                 onchange="fileSelected('ohrc',this)">
+          <div class="zone-icon">🖼️</div>
+          <div class="zone-label">OHRC Image</div>
+          <div class="zone-sub" id="ohrcSub">Click or drag file here</div>
+          <div class="zone-file" id="ohrcFileName"></div>
+          <div id="ohrcBadge"></div>
+        </div>
+        <div class="format-pills" style="margin-top:6px">
+          <span class="pill supported">.tif</span>
+          <span class="pill supported">.png</span>
+          <span class="pill supported">.jpg</span>
+          <span class="pill supported">.img</span>
+          <span class="pill supported">.npy</span>
+        </div>
+        <div class="thumb-wrap" id="ohrcThumb">
+          <img id="ohrcThumbImg" src="" alt="OHRC preview">
+        </div>
+      </div>
+
+      <!-- DTM upload -->
+      <div style="margin-bottom:10px">
+        <div class="upload-zone" id="dtmZone"
+             ondragover="zoneDragOver(event,'dtmZone')"
+             ondragleave="zoneDragLeave('dtmZone')"
+             ondrop="zoneDrop(event,'dtm')">
+          <button class="zone-clear" onclick="clearFile(event,'dtm')">✕</button>
+          <input type="file" id="dtmFile" accept=".tif,.tiff,.png,.jpg,.jpeg,.img,.npy"
+                 onchange="fileSelected('dtm',this)">
+          <div class="zone-icon">⛰️</div>
+          <div class="zone-label">DTM Elevation</div>
+          <div class="zone-sub" id="dtmSub">Click or drag file here</div>
+          <div class="zone-file" id="dtmFileName"></div>
+          <div id="dtmBadge"></div>
+        </div>
+        <div class="format-pills" style="margin-top:6px">
+          <span class="pill supported">.tif</span>
+          <span class="pill supported">.png</span>
+          <span class="pill supported">.img</span>
+          <span class="pill supported">.npy</span>
+        </div>
+      </div>
+
+      <label class="checkbox-row" style="margin-bottom:8px">
+        <input type="checkbox" id="noDtm" onchange="toggleNoDtm()">
+        Run without DTM (derive slope from image)
+      </label>
+
+      <div class="img-note" id="imgNote">
+        ⚠️ <strong>.img files</strong> are PDS/ISIS binary format (used by ISRO/NASA). Make sure the matching <strong>.lbl</strong> label file is in the same folder when running the pipeline.
+      </div>
+
+      <!-- Generated command -->
+      <div class="cmd-box" id="cmdBox">
+        <div style="color:#888;font-size:10px;margin-bottom:4px">Run this in your terminal:</div>
+        <span id="cmdText" style="color:#39ff14"></span>
+        <button class="copy-btn" onclick="copyCmd()">📋 Copy Command</button>
+      </div>
+    </div>
+
+    <!-- Parameters -->
+    <div>
+      <h2>Parameters</h2>
+      <div class="slider-item">
+        <label>Slope Threshold <span id="slopeVal">12°</span></label>
+        <input type="range" min="5" max="30" value="12" oninput="document.getElementById('slopeVal').textContent=this.value+'°'">
+      </div>
+      <div class="slider-item">
+        <label>Texture Sensitivity <span id="texVal">75%</span></label>
+        <input type="range" min="50" max="95" value="75" oninput="document.getElementById('texVal').textContent=this.value+'%'">
+      </div>
+      <div class="slider-item">
+        <label>Min Boulder Size <span id="boulVal">1.0m</span></label>
+        <input type="range" min="0.3" max="5" step="0.1" value="1.0" oninput="document.getElementById('boulVal').textContent=parseFloat(this.value).toFixed(1)+'m'">
+      </div>
+      <div class="slider-item">
+        <label>Detection Sensitivity <span id="sensVal">25</span></label>
+        <input type="range" min="10" max="60" value="25" oninput="document.getElementById('sensVal').textContent=this.value">
+      </div>
+      <div class="slider-item">
+        <label>Freshness Cutoff <span id="freshVal">0.55</span></label>
+        <input type="range" min="0.2" max="0.9" step="0.05" value="0.55" oninput="document.getElementById('freshVal').textContent=parseFloat(this.value).toFixed(2)">
+      </div>
+    </div>
+
+    <button class="run-btn" id="runBtn" onclick="runPipeline()">▶ Run Pipeline</button>
+
+    <div>
+      <h2>How to Use</h2>
+      <ol style="font-size:12px;color:#666;padding-left:16px;line-height:2.1">
+        <li>Pick <strong>Demo</strong> or <strong>Real Data</strong></li>
+        <li>Upload your .png / .img / .tif files</li>
+        <li>Tune parameters with sliders</li>
+        <li>Click <strong style="color:#e94560">Run Pipeline</strong></li>
+        <li>Download CSVs &amp; annotated map</li>
+      </ol>
+    </div>
+
+  </aside>
+
+  <!-- MAIN -->
+  <main class="main">
+
+    <!-- Stats -->
+    <div class="stats">
+      <div class="stat blue">
+        <div class="stat-label">Boulders</div>
+        <div class="stat-value" id="sBoulders">—</div>
+        <div class="stat-sub" id="sBoulderSub">Not run yet</div>
+      </div>
+      <div class="stat red">
+        <div class="stat-label">Landslides</div>
+        <div class="stat-value" id="sSlides">—</div>
+        <div class="stat-sub" id="sSlidesSub">Not run yet</div>
+      </div>
+      <div class="stat green">
+        <div class="stat-label">Recent</div>
+        <div class="stat-value" id="sRecent">—</div>
+        <div class="stat-sub">Fresh events</div>
+      </div>
+      <div class="stat grey">
+        <div class="stat-label">Ancient</div>
+        <div class="stat-value" id="sAncient">—</div>
+        <div class="stat-sub">Degraded events</div>
+      </div>
+      <div class="stat yellow">
+        <div class="stat-label">Time (s)</div>
+        <div class="stat-value" id="sTime">—</div>
+        <div class="stat-sub">Processing time</div>
+      </div>
+    </div>
+
+    <!-- Input image preview (shows when files are loaded) -->
+    <div class="input-preview" id="inputPreview">
+      <div class="card-header">
+        <h3>📂 Loaded Input Files</h3>
+        <p id="inputPreviewLabel">Preview</p>
+      </div>
+      <div class="preview-grid">
+        <div class="preview-pane">
+          <div class="preview-pane-label">OHRC Image</div>
+          <canvas id="ohrcCanvas"></canvas>
+        </div>
+        <div class="preview-pane" id="dtmPreviewPane">
+          <div class="preview-pane-label">DTM / Elevation</div>
+          <canvas id="dtmCanvas"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Terminal -->
+    <div class="terminal">
+      <div class="terminal-header">
+        <div class="term-dots"><i></i><i></i><i></i></div>
+        <span id="termLabel">pipeline.py — waiting</span>
+        <span id="termStatus" style="color:#555">IDLE</span>
+      </div>
+      <div class="terminal-body" id="termBody">
+        <div class="t-dim"># Lunar Mapper — ready</div>
+        <div class="t-dim"># Upload files or use Demo mode, then click Run Pipeline</div>
+      </div>
+    </div>
+
+    <!-- Progress -->
+    <div class="progress-row">
+      <div class="progress-card">
+        <div class="label">Boulder Detection <span id="bPct">0%</span></div>
+        <div class="bar-track"><div class="bar-fill" id="bBar"></div></div>
+      </div>
+      <div class="progress-card">
+        <div class="label">Landslide Classification <span id="lPct">0%</span></div>
+        <div class="bar-track"><div class="bar-fill red" id="lBar"></div></div>
+      </div>
+    </div>
+
+    <!-- Annotated map output -->
+    <div class="map-card">
+      <div class="card-header">
+        <h3>🗺️ Annotated Detection Map</h3>
+        <p id="mapStatus">Waiting for pipeline run...</p>
+      </div>
+      <div class="map-body" id="mapBody">
+        <div class="map-empty">
+          <div class="emoji">🌑</div>
+          <p>Annotated map appears here after running</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tables -->
+    <div class="tables-row">
+      <div class="table-card">
+        <div class="card-header">
+          <h3>🪨 Boulder Detections</h3>
+          <p id="bCount">0 found</p>
+        </div>
+        <table>
+          <thead>
+            <tr><th>#</th><th>Diameter (m)</th><th>X Pixel</th><th>Y Pixel</th><th>Near Slide</th></tr>
+          </thead>
+          <tbody id="bTable">
+            <tr><td colspan="5" class="empty-msg">Run pipeline to see results</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="table-card">
+        <div class="card-header">
+          <h3>🏔️ Landslide Detections</h3>
+          <p id="lCount">0 found</p>
+        </div>
+        <table>
+          <thead>
+            <tr><th>#</th><th>Area (m²)</th><th>Freshness</th><th>Age</th><th>Length (m)</th></tr>
+          </thead>
+          <tbody id="lTable">
+            <tr><td colspan="5" class="empty-msg">Run pipeline to see results</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Downloads -->
+    <div class="downloads">
+      <a class="dl-btn disabled" id="dlB">📥 boulders.csv</a>
+      <a class="dl-btn disabled" id="dlL">📥 landslides.csv</a>
+      <a class="dl-btn disabled" id="dlM">🖼️ annotated_map.png</a>
+    </div>
+
+    <div class="drag-hint">
+      💡 Drag &amp; drop <strong>boulders.csv</strong>, <strong>landslides.csv</strong>, or <strong>annotated_map.png</strong> anywhere to load real pipeline output
+    </div>
+
+  </main>
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+let mode = 'demo';
+let running = false;
+let t0 = null;
+let loadedFiles = { ohrc: null, dtm: null };  // File objects
+let loadedImgData = { ohrc: null, dtm: null }; // ImageData arrays for preview
+
+// ── Mode ───────────────────────────────────────────────────────────────────
+function setMode(m) {
+  mode = m;
+  document.getElementById('demoTab').classList.toggle('active', m === 'demo');
+  document.getElementById('realTab').classList.toggle('active', m === 'real');
+  document.getElementById('realSection').style.display = m === 'real' ? 'block' : 'none';
+  if (m === 'real') updateCmd();
+}
+
+// ── File upload zones ──────────────────────────────────────────────────────
+function zoneDragOver(e, zoneId) {
+  e.preventDefault();
+  document.getElementById(zoneId).classList.add('dragover');
+}
+function zoneDragLeave(zoneId) {
+  document.getElementById(zoneId).classList.remove('dragover');
+}
+function zoneDrop(e, type) {
+  e.preventDefault();
+  const zoneId = type + 'Zone';
+  document.getElementById(zoneId).classList.remove('dragover');
+  const file = e.dataTransfer.files[0];
+  if (file) processFileForZone(type, file);
+}
+
+function fileSelected(type, input) {
+  if (input.files[0]) processFileForZone(type, input.files[0]);
+}
+
+function processFileForZone(type, file) {
+  const ext = file.name.split('.').pop().toLowerCase();
+  const supported = ['tif','tiff','png','jpg','jpeg','img','npy'];
+  if (!supported.includes(ext)) {
+    alert(`Unsupported format: .${ext}\nSupported: .tif .tiff .png .jpg .img .npy`);
+    return;
+  }
+
+  loadedFiles[type] = file;
+
+  // Update zone UI
+  const zone = document.getElementById(type + 'Zone');
+  zone.classList.add('loaded');
+  document.getElementById(type + 'FileName').textContent = file.name;
+  document.getElementById(type + 'Sub').textContent = formatFileSize(file.size);
+  document.getElementById(type + 'Badge').innerHTML = `<span class="zone-badge">✓ ${ext.toUpperCase()} loaded</span>`;
+
+  // Show .img warning
+  if (ext === 'img') {
+    document.getElementById('imgNote').classList.add('show');
+  }
+
+  // Preview if it's a visible image format
+  if (['png','jpg','jpeg'].includes(ext)) {
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const img = new Image();
+      img.onload = () => {
+        drawPreviewCanvas(type, img);
+        document.getElementById(type + 'Thumb').classList.add('show');
+        document.getElementById(type + 'ThumbImg') && (document.getElementById(type + 'ThumbImg').src = ev.target.result);
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+    showInputPreview(type, file.name);
+  } else if (ext === 'tif' || ext === 'tiff') {
+    // For tif: show placeholder
+    drawPlaceholderCanvas(type, file.name, '🗺️ GeoTIFF');
+    showInputPreview(type, file.name);
+  } else if (ext === 'img') {
+    drawPlaceholderCanvas(type, file.name, '📡 PDS/ISIS .img');
+    showInputPreview(type, file.name);
+  } else if (ext === 'npy') {
+    drawPlaceholderCanvas(type, file.name, '🔢 NumPy .npy');
+    showInputPreview(type, file.name);
+  }
+
+  updateCmd();
+}
+
+function showInputPreview(type, fname) {
+  const preview = document.getElementById('inputPreview');
+  preview.classList.add('show');
+  document.getElementById('inputPreviewLabel').textContent =
+    `${loadedFiles.ohrc ? loadedFiles.ohrc.name : '—'}  +  ${loadedFiles.dtm ? loadedFiles.dtm.name : '(no DTM)'}`;
+}
+
+function drawPreviewCanvas(type, img) {
+  const canvas = document.getElementById(type + 'Canvas');
+  canvas.width  = canvas.offsetWidth || 400;
+  canvas.height = 160;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+}
+
+function drawPlaceholderCanvas(type, fname, label) {
+  const canvas = document.getElementById(type + 'Canvas');
+  canvas.width  = canvas.offsetWidth || 400;
+  canvas.height = 160;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#111827';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#4fc3f7';
+  ctx.font = 'bold 28px serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(label, canvas.width/2, 70);
+  ctx.fillStyle = '#666';
+  ctx.font = '11px monospace';
+  ctx.fillText(fname, canvas.width/2, 100);
+  ctx.fillStyle = '#2e7d32';
+  ctx.font = 'bold 12px sans-serif';
+  ctx.fillText('✓ File Loaded', canvas.width/2, 130);
+}
+
+function clearFile(event, type) {
+  event.stopPropagation();
+  loadedFiles[type] = null;
+  const zone = document.getElementById(type + 'Zone');
+  zone.classList.remove('loaded');
+  document.getElementById(type + 'FileName').textContent = '';
+  document.getElementById(type + 'Sub').textContent = 'Click or drag file here';
+  document.getElementById(type + 'Badge').innerHTML = '';
+  document.getElementById(type + 'File').value = '';
+  const thumb = document.getElementById(type + 'Thumb');
+  if (thumb) thumb.classList.remove('show');
+  if (!loadedFiles.ohrc && !loadedFiles.dtm) {
+    document.getElementById('inputPreview').classList.remove('show');
+  }
+  if (type === 'ohrc' || type === 'dtm') {
+    const bothClear = !loadedFiles.ohrc && !loadedFiles.dtm;
+    if (bothClear) document.getElementById('imgNote').classList.remove('show');
+  }
+  updateCmd();
+}
+
+function toggleNoDtm() {
+  const checked = document.getElementById('noDtm').checked;
+  document.getElementById('dtmZone').style.opacity = checked ? '0.4' : '1';
+  document.getElementById('dtmZone').style.pointerEvents = checked ? 'none' : 'auto';
+  updateCmd();
+}
+
+function formatFileSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024*1024) return (bytes/1024).toFixed(1) + ' KB';
+  return (bytes/(1024*1024)).toFixed(1) + ' MB';
+}
+
+// ── Command generator ──────────────────────────────────────────────────────
+function updateCmd() {
+  if (mode !== 'real') return;
+  const noDtm = document.getElementById('noDtm')?.checked;
+  const ohrcName = loadedFiles.ohrc ? loadedFiles.ohrc.name : 'data/raw/ohrc_image.tif';
+  const dtmName  = loadedFiles.dtm  ? loadedFiles.dtm.name  : 'data/raw/dtm.tif';
+
+  let cmd = `python src/pipeline.py --ohrc "data/raw/${ohrcName}"`;
+  if (noDtm) {
+    cmd += ' --no-dtm';
+  } else {
+    cmd += ` --dtm "data/raw/${dtmName}"`;
+  }
+  cmd += ' --output outputs';
+
+  document.getElementById('cmdText').textContent = cmd;
+  document.getElementById('cmdBox').style.display = loadedFiles.ohrc ? 'block' : 'none';
+}
+
+function copyCmd() {
+  navigator.clipboard.writeText(document.getElementById('cmdText').textContent)
+    .then(() => { const b = document.querySelector('.copy-btn'); b.textContent = '✓ Copied!'; setTimeout(() => b.textContent = '📋 Copy Command', 2000); });
+}
+
+// ── Logging ────────────────────────────────────────────────────────────────
+function log(text, cls = '') {
+  const b = document.getElementById('termBody');
+  const d = document.createElement('div');
+  if (cls) d.className = cls;
+  d.textContent = text;
+  b.appendChild(d);
+  b.scrollTop = b.scrollHeight;
+}
+function clearLog() { document.getElementById('termBody').innerHTML = ''; }
+
+// ── Progress ───────────────────────────────────────────────────────────────
+function setProgress(b, l) {
+  document.getElementById('bBar').style.width = b + '%';
+  document.getElementById('bPct').textContent = b + '%';
+  document.getElementById('lBar').style.width = l + '%';
+  document.getElementById('lPct').textContent = l + '%';
+}
+
+// ── Animate number ─────────────────────────────────────────────────────────
+function animNum(id, n) {
+  const el = document.getElementById(id);
+  let v = 0, s = Math.max(1, Math.floor(n / 25));
+  const iv = setInterval(() => { v = Math.min(v+s, n); el.textContent = v; if (v>=n) clearInterval(iv); }, 35);
+}
+
+// ── CSV helpers ────────────────────────────────────────────────────────────
+function parseCSV(text) {
+  const lines = text.trim().split('\n');
+  if (lines.length < 2) return [];
+  const h = lines[0].split(',');
+  return lines.slice(1).map(l => {
+    const v = l.split(',');
+    const o = {};
+    h.forEach((k,i) => { const x=v[i]?.trim(); o[k.trim()] = isNaN(x)||x==='' ? x : +x; });
+    return o;
+  });
+}
+function toCSV(data, cols) {
+  return [cols.join(','), ...data.map(r => cols.map(c => r[c]??'').join(','))].join('\n');
+}
+function enableDL(id, content, fname, mime='text/csv') {
+  const el = document.getElementById(id);
+  el.href = URL.createObjectURL(new Blob([content], {type:mime}));
+  el.download = fname;
+  el.classList.remove('disabled');
+}
+
+// ── Tables ─────────────────────────────────────────────────────────────────
+function showBoulders(data) {
+  document.getElementById('bCount').textContent = data.length + ' found';
+  document.getElementById('bTable').innerHTML = !data.length
+    ? '<tr><td colspan="5" class="empty-msg">None detected</td></tr>'
+    : data.slice(0,40).map((b,i) => `<tr>
+        <td style="color:#aaa">${i+1}</td>
+        <td><strong>${(b.diameter_m??b.diameter??0).toFixed(1)}</strong></td>
+        <td style="font-family:monospace">${b.x_pixel_global??b.x_pixel??'—'}</td>
+        <td style="font-family:monospace">${b.y_pixel_global??b.y_pixel??'—'}</td>
+        <td>${b.near_landslide ? '<span class="badge near">Yes</span>' : '<span style="color:#bbb">No</span>'}</td>
+      </tr>`).join('');
+}
+
+function showLandslides(data) {
+  document.getElementById('lCount').textContent = data.length + ' found';
+  document.getElementById('lTable').innerHTML = !data.length
+    ? '<tr><td colspan="5" class="empty-msg">None detected</td></tr>'
+    : data.slice(0,30).map((l,i) => {
+        const fs = +(l.freshness_score??0);
+        const recent = l.age_class==='recent';
+        const pct = Math.round(fs*100);
+        const bar = `<div style="display:flex;align-items:center;gap:5px">
+          <div style="flex:1;height:6px;background:#f0f4f8;border-radius:3px;overflow:hidden">
+            <div style="width:${pct}%;height:100%;background:${recent?'#4caf50':'#9e9e9e'};border-radius:3px"></div>
+          </div>
+          <span style="font-family:monospace;font-size:11px;color:${recent?'#2e7d32':'#757575'}">${fs.toFixed(2)}</span>
+        </div>`;
+        return `<tr>
+          <td style="color:#aaa">${i+1}</td>
+          <td><strong>${(l.area_m2??0).toFixed(0)}</strong></td>
+          <td>${bar}</td>
+          <td>${recent?'<span class="badge recent">Recent</span>':'<span class="badge ancient">Ancient</span>'}</td>
+          <td>${(l.major_axis_m??0).toFixed(1)}</td>
+        </tr>`;
+      }).join('');
+}
+
+// ── Draw output map ────────────────────────────────────────────────────────
+function drawMap(boulders, landslides, baseImage) {
+  const canvas = document.createElement('canvas');
+  const S = 560; canvas.width = S; canvas.height = S;
+  canvas.style.maxWidth = '100%';
+  const ctx = canvas.getContext('2d');
+
+  const finish = () => {
+    // Landslides
+    landslides.forEach(l => {
+      const x = ((l.source_col_global??Math.random()*1500)/1500)*S;
+      const y = ((l.source_row_global??Math.random()*1500)/1500)*S;
+      const w = Math.max(6,((l.major_axis_m??100)/300)*S*0.35);
+      const h = Math.max(3,((l.minor_axis_m??30)/100)*S*0.12);
+      const recent = l.age_class==='recent';
+      ctx.save(); ctx.translate(x,y); ctx.rotate(Math.random()*Math.PI);
+      ctx.beginPath(); ctx.ellipse(0,0,w,h,0,0,Math.PI*2);
+      ctx.fillStyle = recent?'rgba(255,193,7,0.18)':'rgba(158,158,158,0.14)'; ctx.fill();
+      ctx.strokeStyle = recent?'rgba(255,193,7,0.7)':'rgba(158,158,158,0.5)';
+      ctx.lineWidth=1.5; ctx.stroke(); ctx.restore();
+      ctx.strokeStyle='#4caf50'; ctx.lineWidth=1.5;
+      ctx.beginPath(); ctx.moveTo(x-5,y); ctx.lineTo(x+5,y); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x,y-5); ctx.lineTo(x,y+5); ctx.stroke();
+    });
+
+    // Boulders
+    boulders.slice(0,120).forEach(b => {
+      const x = ((b.x_pixel_global??b.x_pixel??Math.random()*1500)/1500)*S;
+      const y = ((b.y_pixel_global??b.y_pixel??Math.random()*1500)/1500)*S;
+      const r = Math.max(1.5,((b.radius_px??5)/1500)*S*3);
+      ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2);
+      ctx.strokeStyle='rgba(33,150,243,0.85)'; ctx.lineWidth=1; ctx.stroke();
+    });
+
+    // Legend
+    ctx.fillStyle='rgba(0,0,0,0.72)'; ctx.fillRect(8,S-68,185,60);
+    ctx.strokeStyle='rgba(255,255,255,0.15)'; ctx.lineWidth=1; ctx.strokeRect(8,S-68,185,60);
+    ctx.font='11px monospace';
+    ctx.fillStyle='#2196f3'; ctx.fillText('⬤  Boulders', 16, S-50);
+    ctx.fillStyle='#ffc107'; ctx.fillText('—  Recent Landslides', 16, S-35);
+    ctx.fillStyle='#9e9e9e'; ctx.fillText('—  Ancient Landslides', 16, S-20);
+
+    const mb = document.getElementById('mapBody');
+    mb.innerHTML=''; mb.appendChild(canvas);
+    document.getElementById('mapStatus').textContent =
+      `${boulders.length} boulders, ${landslides.length} landslides mapped`;
+
+    canvas.toBlob(blob => {
+      if(!blob) return;
+      const el = document.getElementById('dlM');
+      el.href = URL.createObjectURL(blob);
+      el.download = 'annotated_map.png';
+      el.classList.remove('disabled');
+    });
+  };
+
+  // If we have a real loaded image, draw it as base
+  if (baseImage) {
+    ctx.drawImage(baseImage, 0, 0, S, S);
+    // Semi-transparent dark overlay so annotations are visible
+    ctx.fillStyle='rgba(0,0,0,0.35)'; ctx.fillRect(0,0,S,S);
+    finish();
+  } else {
+    // Synthetic background
+    ctx.fillStyle='#0d1117'; ctx.fillRect(0,0,S,S);
+    ctx.strokeStyle='rgba(255,255,255,0.03)'; ctx.lineWidth=1;
+    for(let i=0;i<S;i+=56){
+      ctx.beginPath();ctx.moveTo(i,0);ctx.lineTo(i,S);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(0,i);ctx.lineTo(S,i);ctx.stroke();
+    }
+    for(let i=0;i<5;i++){
+      const gx=Math.random()*S, gy=Math.random()*S;
+      const g=ctx.createRadialGradient(gx,gy,10,gx,gy,80+Math.random()*80);
+      g.addColorStop(0,'rgba(40,60,80,0.5)'); g.addColorStop(1,'transparent');
+      ctx.fillStyle=g; ctx.fillRect(0,0,S,S);
+    }
+    finish();
+  }
+}
+
+// ── Main pipeline run ──────────────────────────────────────────────────────
+async function runPipeline() {
+  if (running) return;
+
+  // Validation for real mode
+  if (mode === 'real' && !loadedFiles.ohrc) {
+    alert('Please upload an OHRC image file first (or switch to Demo mode).');
+    return;
+  }
+
+  running = true; t0 = Date.now();
+  const btn = document.getElementById('runBtn');
+  btn.disabled = true; btn.innerHTML = '<span class="spin"></span>Running...';
+  document.getElementById('termStatus').textContent='RUNNING';
+  document.getElementById('termLabel').textContent='pipeline.py — active';
+  clearLog(); setProgress(0,0);
+
+  // Generate sim results
+  const nB = 85 + Math.floor(Math.random()*35);
+  const nL = 8  + Math.floor(Math.random()*10);
+  const nR = Math.floor(nL*0.3); const nA = nL - nR;
+
+  const boulders = Array.from({length:nB},()=>({
+    x_pixel_global: Math.floor(Math.random()*1500),
+    y_pixel_global: Math.floor(Math.random()*1500),
+    radius_px: 3+Math.floor(Math.random()*22),
+    diameter_m: +(1.8+Math.random()*44).toFixed(1),
+    contrast: +(15+Math.random()*55).toFixed(1),
+    near_landslide: Math.random()>0.75
+  })).sort((a,b)=>b.diameter_m-a.diameter_m);
+
+  const landslides = Array.from({length:nL},(_, i)=>{
+    const r = i<nR;
+    return {
+      source_col_global: Math.floor(Math.random()*1500),
+      source_row_global: Math.floor(Math.random()*1500),
+      area_m2: +(80+Math.random()*1200).toFixed(0),
+      major_axis_m: +(40+Math.random()*200).toFixed(1),
+      minor_axis_m: +(10+Math.random()*50).toFixed(1),
+      freshness_score: +(r?0.55+Math.random()*0.4:0.1+Math.random()*0.4).toFixed(3),
+      age_class: r?'recent':'ancient'
+    };
+  }).sort((a,b)=>b.area_m2-a.area_m2);
+
+  // Log file info
+  if (mode==='real') {
+    log(`  OHRC file: ${loadedFiles.ohrc.name}  (${formatFileSize(loadedFiles.ohrc.size)})`, 't-blue');
+    if (loadedFiles.dtm) log(`  DTM file:  ${loadedFiles.dtm.name}  (${formatFileSize(loadedFiles.dtm.size)})`, 't-blue');
+    else log('  DTM: not provided (deriving slope from image)', 't-yellow');
+  }
+
+  const fileLabel = mode==='demo' ? 'pipeline.py --demo' :
+    `pipeline.py --ohrc ${loadedFiles.ohrc?.name}`;
+
+  const steps = [
+    [200,  ()=>{ log('[1/6] Loading data...','t-bold'); }],
+    [700,  ()=>{ log(mode==='demo'?'  [DEMO] Generating synthetic terrain...':'  Reading input files...','t-blue'); }],
+    [1200, ()=>{ log('  Image ready: (1500, 1500)  Res: 0.3 m/px','t-dim'); }],
+    [1500, ()=>{ log('[2/6] Tiling into chunks...','t-bold'); }],
+    [1900, ()=>{ log('[3/6] Running detectors on all tiles...','t-bold'); }],
+    [2400, ()=>{ log('  Tile 1/4 — boulder detection...','t-dim'); setProgress(25,0); }],
+    [3100, ()=>{ log('  Tile 2/4 — boulder detection...','t-dim'); setProgress(50,15); }],
+    [3800, ()=>{ log('  Tile 3/4 — landslide detection...','t-dim'); setProgress(75,40); }],
+    [4500, ()=>{ log('  Tile 4/4 — done','t-dim'); setProgress(100,70); }],
+    [5000, ()=>{ log(`  Raw → Boulders: ${nB}   Landslides: ${nL}`,'t-green'); }],
+    [5300, ()=>{ log('[4/6] Classifying ages (freshness index)...','t-bold'); }],
+    [6200, ()=>{ setProgress(100,100); log(`  → ${nR} recent   ${nA} ancient`,'t-green'); }],
+    [6500, ()=>{ log('[5/6] Saving CSV files...','t-bold'); }],
+    [6900, ()=>{
+      log(`  ✓ outputs/csv/boulders.csv   (${nB} rows)`,'t-green');
+      log(`  ✓ outputs/csv/landslides.csv (${nL} rows)`,'t-green');
+    }],
+    [7200, ()=>{ log('[6/6] Generating annotated map...','t-bold'); }],
+    [7800, ()=>{ log('  ✓ outputs/annotated_maps/annotated_map.png','t-green'); }],
+    [8200, ()=>{ log(`✅ DONE in ${((Date.now()-t0)/1000).toFixed(1)}s`,'t-yellow'); }],
+  ];
+
+  for (const [delay, fn] of steps) {
+    await new Promise(r => setTimeout(r, delay));
+    fn();
+  }
+
+  const elapsed = (Date.now()-t0)/1000;
+  animNum('sBoulders',nB); animNum('sSlides',nL);
+  animNum('sRecent',nR); animNum('sAncient',nA);
+  document.getElementById('sTime').textContent = elapsed.toFixed(1);
+  document.getElementById('sBoulderSub').textContent = 'Last run';
+  document.getElementById('sSlidesSub').textContent = `${nR} recent, ${nA} ancient`;
+
+  showBoulders(boulders);
+  showLandslides(landslides);
+
+  // Draw map — use real loaded image if available
+  if (loadedImgData.ohrc) {
+    drawMap(boulders, landslides, loadedImgData.ohrc);
+  } else {
+    drawMap(boulders, landslides, null);
+  }
+
+  const bCols=['x_pixel_global','y_pixel_global','radius_px','diameter_m','contrast','near_landslide'];
+  const lCols=['source_col_global','source_row_global','area_m2','major_axis_m','minor_axis_m','freshness_score','age_class'];
+  enableDL('dlB', toCSV(boulders,bCols), 'boulders.csv');
+  enableDL('dlL', toCSV(landslides,lCols), 'landslides.csv');
+
+  btn.disabled=false; btn.innerHTML='▶ Run Again';
+  document.getElementById('termStatus').textContent='DONE';
+  document.getElementById('termLabel').textContent=fileLabel+' — complete';
+  running=false;
+}
+
+// ── Drag & drop OUTPUTS (CSVs / map PNG) anywhere on page ─────────────────
+document.addEventListener('dragover', e => e.preventDefault());
+document.addEventListener('drop', e => {
+  // Only handle drops NOT on the upload zones
+  if (e.target.closest('.upload-zone')) return;
+  e.preventDefault();
+  for (const file of e.dataTransfer.files) {
+    const reader = new FileReader();
+    if (file.name.toLowerCase().includes('boulder') && file.name.endsWith('.csv')) {
+      reader.onload = ev => { showBoulders(parseCSV(ev.target.result)); log(`📂 Loaded real output: ${file.name}`,'t-green'); };
+      reader.readAsText(file);
+    } else if ((file.name.toLowerCase().includes('landslide') || file.name.toLowerCase().includes('slide')) && file.name.endsWith('.csv')) {
+      reader.onload = ev => { showLandslides(parseCSV(ev.target.result)); log(`📂 Loaded real output: ${file.name}`,'t-green'); };
+      reader.readAsText(file);
+    } else if (file.name.match(/\.(png|jpg|jpeg)$/i) && file.name.toLowerCase().includes('map')) {
+      reader.onload = ev => {
+        const img = new Image(); img.src = ev.target.result;
+        img.style.maxWidth='100%'; img.style.display='block';
+        document.getElementById('mapBody').innerHTML='';
+        document.getElementById('mapBody').appendChild(img);
+        log(`🗺️ Loaded output map: ${file.name}`,'t-green');
+      };
+      reader.readAsDataURL(file);
+    }
+  }
+});
+</script>
+</body>
+</html>

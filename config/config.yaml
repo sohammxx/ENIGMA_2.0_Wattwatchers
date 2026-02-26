@@ -1,0 +1,64 @@
+# ============================================================
+# Lunar Mapper Configuration
+# Tune these values based on your actual data
+# ============================================================
+
+data:
+  pixel_resolution_m: 0.3        # OHRC: 0.3 m/pixel
+  dtm_resolution_m: 5.0          # TMC-2 DTM resolution
+  tile_size: 1000                 # px — process image in NxN tiles
+  tile_overlap: 50                # px — overlap between tiles to avoid edge artifacts
+
+boulder_detection:
+  method: "hybrid"                # "hough", "blob", or "hybrid" (both + merge)
+  
+  # Hough Circle Transform
+  hough_dp: 1                     # Inverse ratio of accumulator resolution
+  hough_min_dist: 15              # Min distance between detected centers (px)
+  hough_param1: 50                # Canny high threshold for Hough
+  hough_param2: 25                # Accumulator threshold (lower = more detections)
+  hough_min_radius: 3             # Min boulder radius in pixels
+  hough_max_radius: 80            # Max boulder radius in pixels
+  
+  # Blob detection (LoG)
+  blob_min_sigma: 2
+  blob_max_sigma: 30
+  blob_num_sigma: 10
+  blob_threshold: 0.05
+  
+  # Filtering
+  min_diameter_m: 1.0             # Ignore boulders smaller than this
+  max_diameter_m: 50.0            # Ignore boulders larger than this
+  contrast_threshold: 20          # Min local contrast to accept detection
+
+landslide_detection:
+  slope_threshold_deg: 12.0       # Steeper than this = candidate
+  texture_percentile: 75          # Top X% texture entropy = candidate
+  texture_disk_radius: 5          # Disk radius for entropy computation
+  min_area_pixels: 300            # Min landslide region size
+  max_area_pixels: 5000000        # Max landslide region size
+  elongation_ratio: 0.65          # minor/major axis — lower = more elongated
+  morphology_close_radius: 3      # Close small holes in regions
+  morphology_open_radius: 2       # Remove small noise
+
+age_classification:
+  # Edge sharpness (gradient magnitude along boundary)
+  fresh_gradient_multiplier: 1.8  # If region gradient > X * surrounding → fresh
+  # Slope roughness inside region
+  fresh_roughness_threshold: 4.0  # Degrees std dev
+  # Combined scoring
+  fresh_score_threshold: 0.55     # 0–1 score above this = "recent"
+
+visualization:
+  boulder_color: [255, 50, 50]    # RGB red for boulders
+  landslide_color: [50, 150, 255] # RGB blue for landslides
+  source_color: [0, 255, 100]     # RGB green for source points
+  recent_color: [255, 200, 0]     # RGB yellow for recent features
+  ancient_color: [180, 180, 180]  # RGB grey for ancient features
+  dpi: 150
+  figsize: [20, 20]
+
+output:
+  save_annotated_png: true
+  save_geotiff_overlay: false     # Set true if you need GeoTIFF output
+  save_per_tile: false            # Save per-tile debug images
